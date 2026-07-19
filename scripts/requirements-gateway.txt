@@ -33,3 +33,6 @@ numpy
 pandas
 pyarrow
 typer
+kafka-python>=2.0.2
+confluent-kafka==2.4.0
+

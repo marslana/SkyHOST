@@ -83,13 +83,33 @@ class Provisioner:
         self.gcp_firewall_rules: Set[str] = set()
 
     def _make_cloud_providers(self):
-        self.aws = compute.AWSCloudProvider(
-            key_prefix=f"skyplane{'-'+self.host_uuid.replace('-', '') if self.host_uuid else ''}", auth=self.aws_auth
-        )
-        self.azure = compute.AzureCloudProvider(auth=self.azure_auth)
-        self.gcp = compute.GCPCloudProvider(auth=self.gcp_auth)
-        self.ibmcloud = compute.IBMCloudProvider(auth=self.ibmcloud_auth)
-        self.scp = compute.SCPCloudProvider(auth=self.scp_auth)
+        # Only instantiate cloud providers if their auth object is present and enabled
+        if self.aws_auth and self.aws_auth.enabled():
+            self.aws = compute.AWSCloudProvider(
+                key_prefix=f"skyplane{'-'+self.host_uuid.replace('-', '') if self.host_uuid else ''}", auth=self.aws_auth
+            )
+        else:
+            self.aws = None
+
+        if self.azure_auth and self.azure_auth.enabled():
+            self.azure = compute.AzureCloudProvider(auth=self.azure_auth)
+        else:
+            self.azure = None
+            
+        if self.gcp_auth and self.gcp_auth.enabled():
+            self.gcp = compute.GCPCloudProvider(auth=self.gcp_auth)
+        else:
+            self.gcp = None
+
+        if self.ibmcloud_auth and self.ibmcloud_auth.enabled():
+            self.ibmcloud = compute.IBMCloudProvider(auth=self.ibmcloud_auth)
+        else:
+            self.ibmcloud = None
+            
+        if self.scp_auth and self.scp_auth.enabled():
+            self.scp = compute.SCPCloudProvider(auth=self.scp_auth)
+        else:
+            self.scp = None
 
     def init_global(self, aws: bool = True, azure: bool = True, gcp: bool = True, ibmcloud: bool = True, scp: bool = True):
         """

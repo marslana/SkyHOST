@@ -37,3 +37,72 @@ nb/.ipynb_checkpoints/
 .vscode/
 
 .DS_Store
+
+# --- SkyHOST: local development environment ---
+skyplane-dev-venv/
+*.log
+skyplane-gateway-s3-mock
+
+# --- SkyHOST: keys, certs, credentials (never commit) ---
+*.pem
+*.key
+*.cert
+*e2ee_key*
+temp.cert
+temp.key
+
+# --- SkyHOST: paper sources and manuscripts (kept out of the code repo) ---
+*.tex
+*.aux
+*.fdb_latexmk
+*.fls
+*.docx
+Arslan_Skyplane_Journal*.pdf
+Journal-OJ-CS.*
+Kakfa to Kafka transfer using skyplane.*
+paper_revisions.md
+MULTIPART_FIX_SUMMARY.md
+
+# --- SkyHOST: experiment data, results, figures (published separately) ---
+experiments/
+kafka2kafka experimentation/
+paper-reproducibility/
+skyhost-k2k-eval/
+skyhost-s3k-eval/
+s3tokafka/
+openaq/
+smoke_minframe/
+fig*.pdf
+fig*.png
+flow-graph.png
+unified_arch.png
+results*.csv
+test_250m.*
+make_paper_figures.py
+
+# --- SkyHOST: local experiment drivers and dev fixtures ---
+auto_e2e.py
+cloud_producer.py
+cloud_consumer.py
+k2k_finish.sh
+k2k_lib.sh
+run_all_k2k.sh
+run_exp*.sh
+run_perf_test.sh
+run_rep_latency.sh
+simple_test.sh
+simple_testcopy.sh
+s3test.py
+s3test1.py
+sensitivity_s3_to_kafka.py
+chunk_req_*.json
+dev_gateway_*.json
+dgw_program.json
+sgw_program.json
+gateway_info*.json
+gateway_program.json
+skyplane/quick_producer.py
+skyplane/quick_dest_consumer.py
+skyplane/test_producer_final.py
+skyplane/benchmark_suite.py
+skyplane/validation_suite.py

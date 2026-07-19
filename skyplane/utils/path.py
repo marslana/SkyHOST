@@ -1,3 +1,5 @@
+# skyplane/utils/path.py
+
 import re
 from pathlib import Path
 from typing import Optional, Tuple
@@ -63,6 +65,17 @@ def parse_path(path: str) -> Tuple[str, Optional[str], Optional[str]]:
             raise ValueError(f"Invalid HDFS path: {path}")
         host, path = match.groups()
         return "hdfs", host, path
+    # --- START OF MODIFICATION ---
+    elif path.startswith("kafka://"):
+        provider = "kafka"
+        parsed = path[len("kafka://"):]
+        if len(parsed) == 0:
+            logger.error(f"Invalid Kafka path: '{path}'", fg="red", err=True)
+            raise ValueError(f"Invalid Kafka path: '{path}'")
+        brokers, *topic_parts = parsed.split("/", 1)
+        topic = topic_parts[0] if len(topic_parts) > 0 else ""
+        return provider, brokers, topic
+    # --- END OF MODIFICATION ---
     elif path.startswith("scp://"):
         provider, parsed = path[:3], path[6:]
         if len(parsed) == 0:

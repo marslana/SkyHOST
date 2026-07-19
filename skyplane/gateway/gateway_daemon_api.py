@@ -301,15 +301,38 @@ class GatewayDaemonAPI(threading.Thread):
         # post the upload ids mapping
         @app.route("/api/v1/upload_id_maps", methods=["POST"])
         def update_upload_ids_mapping():
-            # TODO: beware that this assumes that only a single thread on the client is making requests
-            # if concurrent calls are made, this needs to be processed as chunk requests are
-            logging.debug(f"[gateway_api] Recieved id mapping request {request.json}")
+            print(f"[gateway_api] ===== UPLOAD ID DEBUG START =====")
+            print(f"[gateway_api] Raw request data: {request.data}")
+            print(f"[gateway_api] Request JSON: {request.json}")
+            print(f"[gateway_api] Request headers: {dict(request.headers)}")
+            
+            logging.debug(f"[gateway_api] Received id mapping request {request.json}")
+            
             # update upload id mapping
             upload_ids = request.json
+            
+            if not upload_ids:
+                print(f"[gateway_api] ERROR: Empty upload_ids received!")
+                return jsonify({"status": "error", "message": "Empty upload_ids"})
+            
+            print(f"[gateway_api] Processing {len(upload_ids)} regions: {list(upload_ids.keys())}")
+            
+            total_mappings_added = 0
             for region_tag in upload_ids.keys():
-                for key, upload_id in upload_ids[region_tag].items():
-                    self.upload_id_map[region_tag + key] = upload_id
-            return jsonify({"status": "ok"})
+                region_mappings = upload_ids[region_tag]
+                print(f"[gateway_api] Region {region_tag}: {len(region_mappings)} mappings")
+                
+                # Keys are expected to be canonical: "<bucket>:<dest_key>"
+                for key, upload_id in region_mappings.items():
+                    self.upload_id_map[key] = upload_id
+                    total_mappings_added += 1
+                    print(f"[gateway_api] STORED: '{key}' -> '{upload_id}'")
+            
+            # Show all current mappings
+            current_mappings = dict(self.upload_id_map)
+            print(f"[gateway_api] Total mappings now: {len(current_mappings)}")
+            print(f"[gateway_api] ===== UPLOAD ID DEBUG END =====")
+            return jsonify({"status": "ok", "added": total_mappings_added})
 
     def register_error_routes(self, app):
         @app.route("/api/v1/errors", methods=["GET"])

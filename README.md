@@ -1,197 +1,113 @@
-<p align="center">
-    <picture>
-        <source srcset="docs/_static/logo-dark-mode.png" media="(prefers-color-scheme: dark)">
-        <img src="docs/_static/logo-light-mode.png" width="300" />
-    </picture>
-</p>
+# SkyHOST
 
-<p align="center">
-  <a href="https://join.slack.com/t/skyplaneworkspace/shared_invite/zt-1cxmedcuc-GwIXLGyHTyOYELq7KoOl6Q"> 
-    <img alt="Join Slack" src="https://img.shields.io/badge/-Join%20Skyplane%20Slack-blue?logo=slack">
-  </a>
-  
-  <a href="https://github.com/skyplane-project/skyplane/actions/workflows/integration-test-multiple-sizes.yml"> 
-    <img alt="integration-test" src="https://github.com/skyplane-project/skyplane/actions/workflows/integration-test-multiple-sizes.yml/badge.svg">
-  </a>
-  
-  <a href="https://github.com/skyplane-project/skyplane/actions/workflows/docker-publish.yml"> 
-    <img alt="docker" src="https://github.com/skyplane-project/skyplane/actions/workflows/docker-publish.yml/badge.svg">
-  </a>
-  
-  <a href="https://skyplane.readthedocs.io/en/latest/?badge=latest"> 
-    <img alt="docs" src="https://readthedocs.org/projects/skyplane/badge/?version=latest">
-  </a>
-</p>
+**SkyHOST** is a unified cross-cloud data movement framework that extends
+[Skyplane](https://github.com/skyplane-project/skyplane) with native support for
+**streaming systems**. In addition to Skyplane's object-store-to-object-store
+transfers, SkyHOST moves data **into and between Apache Kafka clusters** across
+cloud regions and providers, using ephemeral gateway VMs and parallel TCP
+connections over the WAN.
 
-**🔥 Blazing fast bulk data transfers between any cloud 🔥**
+SkyHOST is built on the Skyplane core (Apache License 2.0). The transfer engine,
+provisioner, and internal APIs retain Skyplane's naming; SkyHOST adds the Kafka
+data plane, the record-aware object-store source, and the unified CLI on top.
 
-Skyplane is a tool for blazingly fast bulk data transfers between object stores in the cloud. It provisions a fleet of VMs in the cloud to transfer data in parallel while using compression and bandwidth tiering to reduce cost.
+## What SkyHOST adds
 
-Skyplane is:
-1. 🔥 Blazing fast ([110x faster than AWS DataSync](https://skyplane.org/en/latest/benchmark.html))
-2. 🤑 Cheap (4x cheaper than rsync)
-3. 🌐 Universal (AWS, Azure, IBM and GCP)
+- **Kafka-to-Kafka streaming** (`skyhost stream`): continuously replicate a
+  source Kafka topic to a destination topic in another region/cloud through a
+  gateway pair, with micro-batching, partition preservation, and tunable
+  destination producer semantics (`acks`, idempotence, in-flight requests).
+- **Object store to Kafka** (`skyhost transfer s3://... kafka://...`):
+  - *Byte-sliced (chunk) mode* for arbitrary objects: objects are split into
+    chunks, shipped over parallel WAN connections, and produced to Kafka as
+    bounded-size messages.
+  - *Record-aware mode* for `.csv` objects: the source gateway parses records
+    and emits one Kafka record per line (SKMETA01 framing), so the destination
+    topic receives well-formed records rather than byte slices. An optional
+    minimal-framing mode (`--src-minimal-framing --dst-minimal-headers`)
+    removes per-record header overhead for high-throughput streaming.
+- **Unified `transfer` command**: routes to `cp` or `stream` automatically
+  based on the URI schemes (`s3://`, `kafka://`, ...).
+- **At-least-once delivery** for Kafka paths via manual offset commits at the
+  source and acknowledged produces at the destination.
 
-You can use Skyplane to transfer data: 
-* between object stores within a cloud provider (e.g. AWS us-east-1 to AWS us-west-2)
-* between object stores across multiple cloud providers (e.g. AWS us-east-1 to GCP us-central1)
-* between local storage and cloud object stores (experimental)
+All existing Skyplane functionality (`cp`, `sync` between object stores) is
+unchanged and available under the same CLI.
 
-Skyplane currently supports the following source and destination endpoints (any source and destination can be combined): 
-
-| Endpoint           | Source             | Destination        |
-|--------------------|--------------------|--------------------|
-| AWS S3             | :white_check_mark: | :white_check_mark: |
-| Google Storage     | :white_check_mark: | :white_check_mark: |
-| Azure Blob Storage | :white_check_mark: | :white_check_mark: |
-| IBM Cloud Object Storage | :white_check_mark: | :white_check_mark: |
-| Local Disk         | :white_check_mark: | (in progress)      |
-
-Skyplane is an actively developed project. It will have 🔪 SHARP EDGES 🔪. Please file an issue or ask the contributors via [the #help channel on our Slack](https://join.slack.com/t/skyplaneworkspace/shared_invite/zt-1cxmedcuc-GwIXLGyHTyOYELq7KoOl6Q) if you encounter bugs.
-
-# Resources 
-- [Quickstart](#quickstart)
-- [Contributing](https://skyplane.org/en/latest/contributing.html)
-- [Roadmap](https://skyplane.org/en/latest/roadmap.html)
-- [Slack Community](https://join.slack.com/t/skyplaneworkspace/shared_invite/zt-1cxmedcuc-GwIXLGyHTyOYELq7KoOl6Q)
-
-# Quickstart
-
-## 1. Installation
-We recommend installation from PyPi:
-```
-$ pip install "skyplane[aws]"
-
-# install support for other clouds as needed:
-
-#   $ pip install "skyplane[azure]"
-#   $ pip install "skyplane[gcp]"
-#   $ pip install "skyplane[ibmcloud]"
-#   $ pip install "skyplane[all]"
-```
-
-Skyplane supports AWS, Azure, IBM and GCP. You can install Skyplane with support for one or more of these clouds by specifying the corresponding extras. To install two out of three clouds, you can run `pip install "skyplane[aws,azure]"`.
-
-*GCP support on the M1 Mac*: If you are using an M1 Mac with the arm64 architecture and want to install GCP support for Skyplane, you will need to install as follows
-`GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1 GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1 pip install "skyplane[aws,gcp]"`
-
-## 2. Setup Cloud Credentials 
-
-Skyplane needs access to cloud credentials to perform transfers. To get started with setting up credentials, make sure you have cloud provider CLI tools installed:
-
-```
----> For AWS:
-$ pip install awscli
-
----> For Google Cloud:
-$ pip install gcloud
-
----> For Azure:
-$ pip install azure
-
-```
-Once you have the CLI tools setup, log into each cloud provider's CLI:
-```
----> For AWS:
-$ aws configure
-
----> For Google Cloud:
-$ gcloud auth application-default login
-
----> For Azure:
-$ az login
-
----> For IBM Cloud:
-$ Follow IBM Cloud and create an account with the resource group.
-Copy https://github.com/skyplane-project/skyplane/blob/main/skyplane/compute/ibmcloud/ibm_credentials.yaml.template
-into `~/.bluemix/ibm_credentials` and fill your 
-IBM IAM key and credentials to your IBM Cloud object storage 
-
----> For SCP:
-$ # Create directory if required
-$ mkdir -p ~/.scp
-$ # Add the lines for "access_key", "secret_key", and "project_id" to scp_credential file
-$ echo "access_key = <your_access_key>" >> ~/.scp/scp_credential
-$ echo "secret_key = <your_secret_key>" >> ~/.scp/scp_credential
-$ echo "project_id = <your_project_id>" >> ~/.scp/scp_credential
-
-```
-After authenticating with each cloud provider, you can run `skyplane init` to create a configuration file for Skyplane.
+## Installation
 
 ```bash
-$ skyplane init
-```
-<details>
-<summary>skyplane init output</summary>
-<br>
-
-```
-$ skyplane init
-
-====================================================
- _____ _   ____   _______ _       ___   _   _  _____
-/  ___| | / /\ \ / / ___ \ |     / _ \ | \ | ||  ___|
-\ `--.| |/ /  \ V /| |_/ / |    / /_\ \|  \| || |__
- `--. \    \   \ / |  __/| |    |  _  || . ` ||  __|
-/\__/ / |\  \  | | | |   | |____| | | || |\  || |___
-\____/\_| \_/  \_/ \_|   \_____/\_| |_/\_| \_/\____/
-====================================================
-
-
-(1) Configuring AWS:
-    Loaded AWS credentials from the AWS CLI [IAM access key ID: ...XXXXXX]
-    AWS region config file saved to /home/ubuntu/.skyplane/aws_config
-
-(2) Configuring Azure:
-    Azure credentials found in Azure CLI
-    Azure credentials found, do you want to enable Azure support in Skyplane? [Y/n]: Y
-    Enter the Azure subscription ID: [XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX]:
-    Azure region config file saved to /home/ubuntu/.skyplane/azure_config
-    Querying for SKU availbility in regions
-    Azure SKU availability cached in /home/ubuntu/.skyplane/azure_sku_mapping
-
-(3) Configuring GCP:
-    GCP credentials found in GCP CLI
-    GCP credentials found, do you want to enable GCP support in Skyplane? [Y/n]: Y
-    Enter the GCP project ID [XXXXXXX]:
-    GCP region config file saved to /home/ubuntu/.skyplane/gcp_config
-
-(4) Configuring SCP:
-    Loaded SCP credentials from the scp_credntial file [access key: ...XXXXXX]
-    SCP region config file saved to /home/ubuntu/.skyplane/scp_config
-
-
-Config file saved to /home/ubuntu/.skyplane/config
+git clone <this-repo>
+cd skyhost
+python3 -m venv venv && source venv/bin/activate
+pip install -e ".[aws]"
+skyhost init   # configure cloud credentials
 ```
 
-</details>
+The gateways run a prebuilt Docker image
+(`ghcr.io/arslan866/skyplane-kafka:amd64-minframe`) which is pulled
+automatically when a transfer is launched. Override it with the
+`SKYPLANE_DOCKER_IMAGE` environment variable if you build your own image
+(see `Dockerfile.skyplane-dev`).
 
-## 3. Run Transfers 
+## Quickstart
 
-We’re ready to use Skyplane! Let’s use `skyplane cp` to copy files from AWS to GCP:
+Kafka-to-Kafka streaming between two regions:
+
+```bash
+skyhost stream "kafka://SRC_BROKER:9092/src_topic" "kafka://DST_BROKER:9092/dst_topic" \
+  --src-region aws:us-east-1 --dst-region aws:eu-central-1 \
+  --reader-processes 4 --writer-processes 4 --send-connections 4 \
+  --batch-size-mb 32 --preserve-partitions \
+  --dst-acks 1 --no-dst-idempotence -y
 ```
-skyplane cp s3://... gs://...
-```
-To transfer only new objects, you can instead use `skyplane sync`:
-```
-$ skyplane sync s3://... gs://...
-```
 
-You can configure Skyplane to use more VMs per region with the `-n` flag. For example, to double the transfer speed with two VMs, run: 
-```
-$ skyplane cp -r s3://... s3://... -n 2
+S3 to Kafka, byte-sliced (any object):
+
+```bash
+skyhost transfer "s3://my-bucket/data.bin" "kafka://DST_BROKER:9092/my_topic" \
+  --src-region aws:eu-central-1 --dst-region aws:us-east-1 \
+  --src-chunk-mb 32 --src-readers 4 --send-connections 4 --dst-writers 4 -y
 ```
 
-## 4. Clean Up 
-Skyplane will automatically attempt to terminate VMs that it starts, but to double check and forcefuly terminate all VMs, run `skyplane deprovision`.
+S3 to Kafka, record-aware (CSV, one Kafka record per line):
 
-# Technical Details
-Skyplane is based on research at UC Berkeley into accelerated networks between cloud providers. Under the hood, Skyplane starts a fleet of VMs in the source and destination regions. It then uses a custom TCP protocol to accelerate the transfer between the VMs. Skyplane may use a L7 overlay network to route traffic around congested network hot spots. 
+```bash
+skyhost transfer "s3://my-bucket/dataset/" "kafka://DST_BROKER:9092/my_topic" \
+  --src-region aws:eu-central-1 --dst-region aws:us-east-1 --recursive \
+  --src-csv-batch-mb 8 --src-readers 4 --send-connections 4 --dst-writers 4 \
+  --src-minimal-framing --dst-minimal-headers -y
+```
 
-<img src="docs/_static/skyplane-data-plane.png" width="384" />
+Object store to object store (inherited from Skyplane):
 
-For more details on Skyplane, see: 
-- [Technical Talk](https://skyplane.org/en/latest/architecture.html)
-- [NSDI '23 Paper](https://arxiv.org/abs/2210.07259)
+```bash
+skyhost cp -r s3://src-bucket/prefix/ gs://dst-bucket/prefix/
+```
 
+Tear down any gateways left running:
 
+```bash
+skyhost deprovision
+```
+
+## Measurement utilities
+
+`skyplane/analysis/` contains the standalone tools used to benchmark transfers
+on the broker hosts: dataset generators, a max-throughput file-backed producer,
+and destination-side end-to-end throughput/latency meters that read the
+per-message produce timestamps stamped by the producer.
+
+## Notes
+
+- SkyHOST provisions VMs and transfers data across clouds: **egress and
+  instance charges apply**. Always confirm `skyhost deprovision` at the end of
+  a session.
+- The legacy `skyplane` command remains available as an alias of `skyhost`.
+
+## License
+
+Apache License 2.0. SkyHOST is a fork of
+[Skyplane](https://github.com/skyplane-project/skyplane) (UC Berkeley Sky
+Computing Lab); see `LICENSE` and the upstream repository for the original
+project and its contributors.

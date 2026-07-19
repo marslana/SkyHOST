@@ -51,6 +51,10 @@ class GatewayReceiver:
         self.server_ports = []
         self.next_gateway_worker_id = 0
         self.socket_profiler_event_queue = Queue()
+        # Cumulative counters (per process)
+        self.total_chunks_received = 0
+        self.total_bytes_received_wire = 0
+        self.total_bytes_written_raw = 0
 
         # SSL context
         if use_tls:
@@ -72,6 +76,15 @@ class GatewayReceiver:
 
         def server_worker(worker_id: int):
             self.worker_id = worker_id
+            # Periodic summary thread for net recv
+            def _summary_loop():
+                while not self.error_event.is_set():
+                    logger.info(
+                        f"[DGW-RECV:{'unknown' if len(self.server_ports)==0 else self.server_ports[-1]}] Summary[net recv]: chunks={self.total_chunks_received}, wire_bytes={self.total_bytes_received_wire}, raw_bytes={self.total_bytes_written_raw}"
+                    )
+                    time.sleep(5)
+            from threading import Thread
+            Thread(target=_summary_loop, daemon=True).start()
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
                 sock.bind(("0.0.0.0", 0))
                 socket_port = sock.getsockname()[1]
@@ -141,6 +154,7 @@ class GatewayReceiver:
 
     def recv_chunks(self, conn: socket.socket, addr: Tuple[str, int]):
         server_port = conn.getsockname()[1]
+        logger.info(f"[DGW-RECV:{server_port}] Accepted connection from {addr}. Now in recv_chunks loop.")
         chunks_received = []
         init_space = self.chunk_store.remaining_bytes()
         print("Init space", init_space)
@@ -174,6 +188,7 @@ class GatewayReceiver:
                     chunk_received_size, chunk_received_size_decompressed = 0, 0
                     to_write = bytearray(socket_data_len)
                     to_write_view = memoryview(to_write)
+                    logger.info(f"[DGW-RECV:{server_port}]:{chunk_header.chunk_id} Starting to receive {socket_data_len} bytes from socket.")
                     while socket_data_len > 0:
                         nbytes = conn.recv_into(to_write_view[chunk_received_size:], min(socket_data_len, self.recv_block_size))
                         socket_data_len -= nbytes
@@ -209,6 +224,7 @@ class GatewayReceiver:
 
                             # check write succeeds
                             assert os.path.exists(fpath)
+                            logger.info(f"[DGW-RECV:{server_port}]:{chunk_header.chunk_id} Successfully wrote {os.path.getsize(fpath)} bytes to {fpath}.")
 
                             # check size
                             file_size = os.path.getsize(fpath)
@@ -231,6 +247,14 @@ class GatewayReceiver:
             # todo check hash
             # self.chunk_store.state_finish_download(chunk_header.chunk_id, f"receiver:{self.worker_id}")
             chunks_received.append(chunk_header.chunk_id)
+
+            # Update and log cumulative counters
+            self.total_chunks_received += 1
+            self.total_bytes_received_wire += chunk_header.data_len
+            self.total_bytes_written_raw += chunk_header.raw_data_len
+            logger.info(
+                f"[DGW-RECV:{server_port}] Counters[net recv]: chunks={self.total_chunks_received}, wire_bytes={self.total_bytes_received_wire}, raw_bytes={self.total_bytes_written_raw}"
+            )
 
             if chunk_header.n_chunks_left_on_socket == 0:
                 logger.debug(f"[receiver:{server_port}] End of stream reached")

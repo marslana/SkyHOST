@@ -396,7 +396,8 @@ class Server:
         gateway_container_hash = start_out.strip().split("\n")[-1][:12]
         self.gateway_log_viewer_url = f"http://127.0.0.1:{self.tunnel_port(8888)}/container/{gateway_container_hash}"
         logger.fs.debug(f"{self.uuid()} log_viewer_url = {self.gateway_log_viewer_url}")
-        self.gateway_api_url = f"http://127.0.0.1:{self.tunnel_port(8080 + 1)}"
+        protocol = "https" if use_socket_tls else "http"
+        self.gateway_api_url = f"{protocol}://127.0.0.1:{self.tunnel_port(8081)}"
         logger.fs.debug(f"{self.uuid()} gateway_api_url = {self.gateway_api_url}")
 
         # wait for gateways to start (check status API)

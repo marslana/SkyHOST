@@ -129,7 +129,9 @@ class UsageClient:
 
     @classmethod
     def enabled(cls):
-        return cls.usage_stats_status() is not UsageStatsStatus.DISABLED_EXPLICITLY
+        # SkyHOST: usage reporting is opt-in (upstream Skyplane enabled it by default
+        # and posts to the upstream project's collector).
+        return cls.usage_stats_status() is UsageStatsStatus.ENABLED_EXPLICITLY
 
     @classmethod
     def log_exception(
@@ -358,8 +360,12 @@ class UsageClient:
         data.sent_time_ms = int(time.time() * 1000)
         payload = {"streams": [{"stream": prom_labels, "values": [[str(_get_current_timestamp_ns()), json.dumps(asdict(data))]]}]}
         payload = json.dumps(payload)
-        r = requests.post(LOKI_URL, headers=headers, data=payload, timeout=0.5)
-
-        if r.status_code == 204:
-            with open(path, "w") as json_file:
-                json_file.write(json.dumps(asdict(data)))
+        try:
+            r = requests.post(LOKI_URL, headers=headers, data=payload, timeout=0.5)
+            if r.status_code == 204:
+                with open(path, "w") as json_file:
+                    json_file.write(json.dumps(asdict(data)))
+        except requests.exceptions.RequestException as e:
+            # Best-effort telemetry: swallow network errors/timeouts
+            logger.debug(f"Usage reporting failed (non-fatal): {e}")
+            return

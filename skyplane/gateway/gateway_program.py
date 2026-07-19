@@ -65,11 +65,19 @@ class GatewayGenData(GatewayOperator):
 
 
 class GatewayReadObjectStore(GatewayOperator):
-    def __init__(self, bucket_name: str, bucket_region: str, num_connections: int = 32):
+    def __init__(self, bucket_name: str, bucket_region: str, num_connections: int = 32,
+                 csv_target_batch_bytes: Optional[int] = None,
+                 csv_max_records_per_batch: Optional[int] = None,
+                 csv_minimal_framing: bool = False):
         super().__init__("read_object_store")
         self.bucket_name = bucket_name
         self.bucket_region = bucket_region
         self.num_connections = num_connections
+        # Optional CSV controls (applied only when reading .csv keys)
+        self.csv_target_batch_bytes = csv_target_batch_bytes
+        self.csv_max_records_per_batch = csv_max_records_per_batch
+        # Emit value-only SKMETA01 frames (no per-record headers) for high-throughput record streaming
+        self.csv_minimal_framing = csv_minimal_framing
 
 
 class GatewayWriteObjectStore(GatewayOperator):
@@ -82,9 +90,51 @@ class GatewayWriteObjectStore(GatewayOperator):
 
 
 class GatewayWriteLocal(GatewayOperator):
-    def __init__(self, path: Optional[str] = None):
+    def __init__(self, path: Optional[str] = None, num_connections: int = 1):
         super().__init__("write_local")
         self.path = path
+        self.num_connections = num_connections
+
+class GatewayReadKafka(GatewayOperator): # This is for defining the program structure
+    def __init__(self, kafka_brokers: str, topic: str, group_id: str = "skyplane-default-consumer", num_connections: int = 1,
+                 target_batch_size_mb: int = 32, max_batch_time_seconds: float = 0.05, max_messages_per_batch: int = 10000):
+        super().__init__("read_kafka") # This string must match "op_type"
+        self.kafka_brokers = kafka_brokers
+        self.topic = topic
+        self.group_id = group_id
+        self.num_connections = num_connections # For potential future parallel consumers
+        # Batching configuration for downstream operator
+        self.target_batch_size_mb = target_batch_size_mb
+        self.max_batch_time_seconds = max_batch_time_seconds
+        self.max_messages_per_batch = max_messages_per_batch
+
+class GatewayWriteKafka(GatewayOperator):
+    """Defines a gateway operation to write data to a Kafka topic."""
+    def __init__(
+        self,
+        kafka_brokers: str,
+        topic: str,
+        num_connections: int = 1,
+        preserve_partitions: bool = True,
+        acks: str = "1",
+        enable_idempotence: bool = False,
+        max_in_flight_requests_per_connection: int = 5,
+        max_message_bytes: int = 800 * 1024,
+        linger_ms: int = 100,
+        minimal_headers: bool = False,
+    ):
+        super().__init__("write_kafka") # This string must match the "op_type"
+        self.kafka_brokers = kafka_brokers
+        self.topic = topic
+        self.num_connections = num_connections
+        self.preserve_partitions = preserve_partitions
+        # Producer tuning knobs (optional)
+        self.acks = acks
+        self.enable_idempotence = enable_idempotence
+        self.max_in_flight_requests_per_connection = max_in_flight_requests_per_connection
+        self.max_message_bytes = max_message_bytes
+        self.linger_ms = linger_ms
+        self.minimal_headers = minimal_headers
 
 
 class GatewayMuxAnd(GatewayOperator):

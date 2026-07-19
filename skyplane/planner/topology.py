@@ -5,6 +5,8 @@ from skyplane.gateway.gateway_program import (
     GatewayWriteObjectStore,
     GatewayGenData,
     GatewayReadObjectStore,
+    GatewayReadKafka,
+    GatewayWriteKafka,
 )
 from typing import List, Dict, Optional
 
@@ -144,7 +146,7 @@ class TopologyPlan:
         return gateway_info
 
     def sink_instances(self, region_tag: Optional[str] = None) -> Dict[str, List[TopologyPlanGateway]]:
-        """Return list of gateways that have a sink operator (GatewayWriteObjectStore, GatewayWriteLocal)"""
+        """Return list of gateways that have a sink operator (GatewayWriteObjectStore, GatewayWriteLocal, GatewayWriteKafka)"""
         nodes = {}
         for gateway in self.gateways.values():
             for operator in gateway.gateway_program.get_operators():
@@ -155,8 +157,11 @@ class TopologyPlan:
                 if isinstance(operator, GatewayWriteLocal):
                     if region_tag is not None and gateway.region_tag != region_tag:
                         continue
+                if isinstance(operator, GatewayWriteKafka):
+                    if region_tag is not None and gateway.region_tag != region_tag:
+                        continue
 
-                if isinstance(operator, GatewayWriteObjectStore) or isinstance(operator, GatewayWriteLocal):
+                if isinstance(operator, (GatewayWriteObjectStore, GatewayWriteLocal, GatewayWriteKafka)):
                     if gateway.region_tag not in nodes:
                         nodes[gateway.region_tag] = []
                     nodes[gateway.region_tag].append(gateway)
@@ -168,7 +173,7 @@ class TopologyPlan:
         nodes = []
         for gateway in self.gateways.values():
             for operator in gateway.gateway_program.get_operators():
-                if isinstance(operator, GatewayReadObjectStore) or isinstance(operator, GatewayGenData):
+                if isinstance(operator, (GatewayReadObjectStore, GatewayGenData, GatewayReadKafka)):
                     nodes.append(gateway)
                     break
 

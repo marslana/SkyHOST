@@ -61,7 +61,8 @@ class ChunkStore:
                 f"Partition {chunk_request.chunk.partition_id} does not exist in {self.chunk_requests} - was the gateway program loaded?"
             )
         try:
-            self.chunk_requests[chunk_request.chunk.partition_id].put_nowait(chunk_request)
+            # Blocking put to allow the queue to drain and accept all batch items
+            self.chunk_requests[chunk_request.chunk.partition_id].put(chunk_request)
         except Exception as e:
             print("Error adding chunk", e)
             return self.chunk_requests[chunk_request.chunk.partition_id].size(), False

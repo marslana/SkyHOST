@@ -7,10 +7,12 @@ from skyplane.api.dataplane import Dataplane
 from skyplane.api.pipeline import Pipeline
 from skyplane.api.tracker import TransferHook
 
-__version__ = "0.3.2"
+__version__ = "0.3.2"  # upstream Skyplane core version
+skyhost_version = "1.0.0"
 __root__ = Path(__file__).parent.parent
 __all__ = [
     "__version__",
+    "skyhost_version",
     "__root__",
     # modules
     "compute",

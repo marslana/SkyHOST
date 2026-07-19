@@ -2,9 +2,14 @@ from multiprocessing import Queue
 
 
 class GatewayQueue:
-    def __init__(self, maxsize=10000):
+    def __init__(self, maxsize=5000):
         self.q = Queue(maxsize)
         self.handles = []
+
+    
+    def get(self, block=True, timeout=None):
+        """Behaves like the standard multiprocessing.Queue.get()"""
+        return self.q.get(block=block, timeout=timeout)
 
     def register_handle(self, requester_handle):
         self.handles.append(requester_handle)

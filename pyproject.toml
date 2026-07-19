@@ -86,3 +86,4 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 skylark = "skyplane.cli.cli:app"
 skyplane = "skyplane.cli.cli:app"
+skyhost = "skyplane.cli.cli:app"

@@ -23,7 +23,9 @@ is_gateway_env = os.environ.get("SKYPLANE_IS_GATEWAY", None) == "1"
 
 
 def gateway_docker_image():
-    return "public.ecr.aws/s6m1p0n8/skyplane:" + gateway_version
+    # SkyHOST gateway image with Kafka + record-aware S3 support (minimal framing
+    # is enabled via runtime flag, so this single image serves all transfer modes).
+    return "ghcr.io/arslan866/skyplane-kafka:amd64-minframe"
 
 
 tmp_log_dir = Path("/tmp/skyplane")

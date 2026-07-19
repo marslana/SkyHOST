@@ -1,5 +1,6 @@
 import json
 import time
+import pandas as pd
 from abc import ABC
 from datetime import datetime
 from threading import Thread
@@ -20,6 +21,8 @@ from skyplane.utils.definitions import GB
 from skyplane.utils.retry import retry_backoff
 
 from skyplane.cli.impl.common import print_stats_completed
+from skyplane.api.transfer_job import TransferJob, StreamJob
+
 
 if TYPE_CHECKING:
     from skyplane.api.transfer_job import TransferJob
@@ -219,7 +222,7 @@ class TransferProgressTracker(Thread):
                 "total_runtime_s": e2e_end_time - e2e_start_time,
                 "throughput_gbits": self.query_bytes_dispatched() / (e2e_end_time - e2e_start_time) / GB * 8,
             }
-            self.hooks.on_transfer_end()
+            self.hooks.on_transfer_end(transfer_stats)
 
             int(time.time())
             try:
@@ -264,72 +267,89 @@ class TransferProgressTracker(Thread):
             )
             print_stats_completed(total_runtime_s=transfer_stats["total_runtime_s"], throughput_gbits=transfer_stats["throughput_gbits"])
 
-    @imports.inject("pandas")
-    def monitor_transfer(pd, self, region_tag):
-        """Monitor the tranfer by copying remote gateway logs and show transfer stats by hooks"""
-        # todo implement transfer monitoring to update job_complete_chunk_ids and job_pending_chunk_ids while the transfer is in progress
+    def monitor_transfer(self, region_tag: str):
+        print("\n\n<<<<< RUNNING LATEST TRACK_TRANSFER MONITOR_TRANSFER VERSION >>>>>\n\n")
+        """Monitors chunk status for a given destination region."""
+        
+        # Import StreamJob locally to avoid circular dependency at the top level
+        from skyplane.api.transfer_job import StreamJob
+        
+        is_streaming_job = isinstance(next(iter(self.jobs.values())), StreamJob)
+        sinks = [n.gateway_id for nodes in self.dataplane.topology.sink_instances(region_tag).values() for n in nodes]
+        
+        # The main monitoring loop
+        while True:
+            # For a batch job, we exit only when both of these hold:
+            # 1) All known pending chunks are complete
+            # 2) Gateways report no incomplete chunk requests (covers chunks generated inside gateways, e.g., CSV batches)
+            # For a streaming job, this loop runs until an error or the client is interrupted by the user.
+            if not is_streaming_job and not any(self.job_pending_chunk_ids[uuid][region_tag] for uuid in self.jobs):
+                try:
+                    if self._all_gateways_complete():
+                        logger.fs.info(f"All chunks for region {region_tag} have completed (including gateway-generated batches).")
+                        break
+                except Exception:
+                    # Be conservative; if we cannot verify, continue monitoring
+                    pass
 
-        # regions that are sinks for specific region tag
-        # TODO: should eventualy map bucket to list of instances
-        sinks = [n for nodes in self.dataplane.topology.sink_instances(region_tag).values() for n in nodes]
-
-        while any([len(self.job_pending_chunk_ids[job_uuid][region_tag]) > 0 for job_uuid in self.job_pending_chunk_ids]):
-            # refresh shutdown status by running noop
-            do_parallel(lambda i: i.run_command("echo 1"), self.dataplane.bound_nodes.values(), n=8)
-
-            # check for errors and exit if there are any (while setting debug flags)
+            # Check for gateway errors, which would terminate any job type.
             errors = self.dataplane.check_error_logs()
             if any(errors.values()):
-                logger.warning("Copying gateway logs...")
                 self.dataplane.copy_gateway_logs()
                 self.errors = errors
                 raise exceptions.SkyplaneGatewayException("Transfer failed with errors", errors)
 
+            # Query and process chunk status logs from all gateways
             log_df = pd.DataFrame(self._query_chunk_status())
             if log_df.empty:
-                logger.warning("No chunk status log entries yet")
-                time.sleep(0.05)
+                time.sleep(1.0 if is_streaming_job else 0.2) # Sleep longer for streaming if no updates
                 continue
 
-            # TODO: have visualization for completition across all destinations
-            is_complete_rec = (
-                lambda row: row["state"] == ChunkState.complete
-                and row["instance"] in [s.gateway_id for s in sinks]
-                # and row["region_tag"] in region_sinks
-            )
-            sink_status_df = log_df[log_df.apply(is_complete_rec, axis=1)]
-            completed_chunk_ids = list(set(sink_status_df.chunk_id.unique()))
+            # Filter for chunks that have been completed at a sink gateway for the monitored region
+            is_complete_rec = lambda row: row["state"] == ChunkState.complete and row["instance"] in sinks
+            completed_chunk_ids = set(log_df[log_df.apply(is_complete_rec, axis=1)].chunk_id.unique())
 
-            # update job_complete_chunk_ids and job_pending_chunk_ids
-            # TODO: do chunk-tracking per-destination
+            if not completed_chunk_ids:
+                time.sleep(1.0 if is_streaming_job else 0.2)
+                continue
+
+            # --- THIS IS THE CORRECT, STREAM-AWARE LOGIC ---
             for job_uuid, job in self.jobs.items():
-                try:
-                    job_complete_chunk_ids = set(
-                        chunk_id for chunk_id in completed_chunk_ids if self._chunk_to_job_map[chunk_id] == job_uuid
-                    )
-                except Exception as e:
-                    raise e
-                new_chunk_ids = (
-                    self.job_complete_chunk_ids[job_uuid][region_tag]
-                    .union(job_complete_chunk_ids)
-                    .difference(self.job_complete_chunk_ids[job_uuid][region_tag])
-                )
-                completed_chunks = []
-                for id in new_chunk_ids:
-                    assert (
-                        job_uuid in self.job_chunk_requests and id in self.job_chunk_requests[job_uuid]
-                    ), f"Missing chunk id {id} for job {job_uuid}: {self.job_chunk_requests}"
-                for id in new_chunk_ids:
-                    completed_chunks.append(self.job_chunk_requests[job_uuid][id])
-                self.hooks.on_chunk_completed(completed_chunks, region_tag)
-                self.job_complete_chunk_ids[job_uuid][region_tag] = self.job_complete_chunk_ids[job_uuid][region_tag].union(
-                    job_complete_chunk_ids
-                )
-                self.job_pending_chunk_ids[job_uuid][region_tag] = self.job_pending_chunk_ids[job_uuid][region_tag].difference(
-                    job_complete_chunk_ids
-                )
-            # sleep
-            time.sleep(0.05)
+                
+                # Check if the current job is a streaming job
+                is_this_job_streaming = isinstance(job, StreamJob)
+
+                if is_this_job_streaming:
+                    # For a streaming job, we don't track progress against a known set of chunks.
+                    # We simply find which of the newly reported chunks are new to us and report them.
+                    newly_completed_ids = completed_chunk_ids.difference(self.job_complete_chunk_ids[job_uuid][region_tag])
+                    
+                    if newly_completed_ids:
+                        logger.fs.info(f"[Tracker] Streamed {len(newly_completed_ids)} new data chunks to {region_tag}.")
+                        
+                        # For hooks, create dummy Chunk objects since we don't have the full metadata client-side
+                        completed_chunks = [Chunk(chunk_id=cid, src_key=job.src_path, dest_key=job.dst_paths[0], chunk_length_bytes=0) for cid in newly_completed_ids]
+                        self.hooks.on_chunk_completed(completed_chunks, region_tag)
+                        
+                        # Update the set of all completed chunks we've ever seen for this job
+                        self.job_complete_chunk_ids[job_uuid][region_tag].update(newly_completed_ids)
+                else:
+                    # This is the logic for standard, finite transfers (CopyJob/SyncJob)
+                    # Find which of the completed chunks belong to this job and are new.
+                    known_job_chunks = {cid for cid in completed_chunk_ids if self._chunk_to_job_map.get(cid) == job_uuid}
+                    newly_completed_ids = known_job_chunks.difference(self.job_complete_chunk_ids[job_uuid][region_tag])
+
+                    if newly_completed_ids:
+                        # Get the full Chunk objects for the hook
+                        completed_chunks = [self.job_chunk_requests[job_uuid][cid] for cid in newly_completed_ids if cid in self.job_chunk_requests[job_uuid]]
+                        self.hooks.on_chunk_completed(completed_chunks, region_tag)
+                        
+                        # Update the state sets
+                        self.job_complete_chunk_ids[job_uuid][region_tag].update(newly_completed_ids)
+                        self.job_pending_chunk_ids[job_uuid][region_tag].difference_update(newly_completed_ids)
+            
+            # Pause before the next poll cycle
+            time.sleep(1.0 if is_streaming_job else 0.2)
 
     @property
     # TODO: this is a very slow function, but we can't cache it since self.job_chunk_requests changes over time
@@ -363,6 +383,42 @@ class TransferProgressTracker(Thread):
         for result in do_parallel(get_chunk_status, self.dataplane.bound_nodes.items(), n=8, return_args=False):
             rows.extend(result)
         return rows
+
+    def _all_gateways_complete(self) -> bool:
+        """Return True if all sink gateways report no incomplete chunk requests.
+        Checks /api/v1/incomplete_chunk_requests only on destination gateways.
+        """
+        def get_incomplete(args):
+            node, instance = args
+            reply = retry_backoff(partial(self.http_pool.request, "GET", f"{instance.gateway_api_url}/api/v1/incomplete_chunk_requests"))
+            if reply.status != 200:
+                # Treat non-200 as not complete rather than erroring out
+                return False
+            data = json.loads(reply.data.decode("utf-8"))
+            incompletes = data.get("chunk_requests", {}) or {}
+            if not incompletes:
+                return True
+            # Consider complete if all remaining incompletes are zero-length (no-op) chunks
+            for _, payload in incompletes.items():
+                req = payload.get("req") or {}
+                chunk = req.get("chunk") or {}
+                if int(chunk.get("chunk_length_bytes", 0) or 0) > 0:
+                    return False
+            return True
+
+        try:
+            # Build list of sink (destination) nodes
+            sink_items = []
+            for region, nodes in self.dataplane.topology.sink_instances().items():
+                for node in nodes:
+                    sink_items.append((node, self.dataplane.bound_nodes[node]))
+            if not sink_items:
+                return True
+            results = [res for res in do_parallel(get_incomplete, sink_items, n=8, return_args=False)]
+            return all(results)
+        except Exception:
+            # Be conservative on any error
+            return False
 
     @property
     def is_complete(self, region_tag: str):

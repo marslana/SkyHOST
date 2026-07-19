@@ -1,0 +1,7 @@
+FROM public.ecr.aws/s6m1p0n8/skyplane:edge
+ENV PYTHONPATH=/pkg:$PYTHONPATH
+RUN rm -rf /pkg/skyplane
+COPY skyplane /pkg/skyplane
+# sanity check: ensure operators exist in image
+RUN grep -n "write_kafka" /pkg/skyplane/gateway/gateway_daemon.py && \
+    grep -n "read_kafka" /pkg/skyplane/gateway/gateway_daemon.py

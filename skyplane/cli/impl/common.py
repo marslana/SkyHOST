@@ -16,21 +16,23 @@ console = Console()
 
 
 def print_header():
-    header = """ _____ _   ____   _______ _       ___   _   _  _____ 
-/  ___| | / /\ \ / / ___ \ |     / _ \ | \ | ||  ___|
-\ `--.| |/ /  \ V /| |_/ / |    / /_\ \|  \| || |__  
- `--. \    \   \ / |  __/| |    |  _  || . ` ||  __| 
-/\__/ / |\  \  | | | |   | |____| | | || |\  || |___ 
-\____/\_| \_/  \_/ \_|   \_____/\_| |_/\_| \_/\____/"""
+    header = """ _____  _   ____   __ _   _  _____  _____  _____
+/  ___|| | / /\ \ / /| | | ||  _  |/  ___||_   _|
+\ `--. | |/ /  \ V / | |_| || | | |\ `--.   | |
+ `--. \|    \   \ /  |  _  || | | | `--. \  | |
+/\__/ /| |\  \  | |  | | | |\ \_/ //\__/ /  | |
+\____/ \_| \_/  \_/  \_| |_/ \___/ \____/   \_/"""
     console.print(f"[bright_black]{header}[/bright_black]\n")
 
 
 def print_stats_completed(total_runtime_s: float, throughput_gbits: Optional[float]):
     console.print(f"\n:white_check_mark: [bold green]Transfer completed successfully[/bold green]")
     runtime_line = f"[white]Transfer runtime:[/white] [bright_black]{total_runtime_s:.2f}s[/bright_black]"
-    throughput_line = (
-        f", [white]Throughput:[/white] [bright_black]{throughput_gbits:.2f}Gbps[/bright_black]" if throughput_gbits is not None else ""
-    )
+    # Display throughput in MB/s instead of Gbps (1 Gbps = 125 MB/s)
+    throughput_line = ""
+    if throughput_gbits is not None:
+        throughput_mbps = throughput_gbits * 125.0
+        throughput_line = f", [white]Throughput:[/white] [bright_black]{throughput_mbps:.2f} MB/s[/bright_black]"
     console.print(f"{runtime_line}{throughput_line}")
 
 

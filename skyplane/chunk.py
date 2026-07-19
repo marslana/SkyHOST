@@ -56,6 +56,9 @@ class ChunkRequest:
     src_random_size_mb: Optional[int] = None
     src_object_store_bucket: Optional[str] = None
     dst_object_store_bucket: Optional[str] = None
+    src_provider: Optional[str] = None
+    dst_provider: Optional[str] = None
+    transfer_id: Optional[str] = None
 
     def __post_init__(self):
         if self.src_type == "object_store":
@@ -74,6 +77,35 @@ class ChunkRequest:
     def from_dict(in_dict: Dict):
         # in_dict["chunk"] = Chunk.from_dict(in_dict)
         return ChunkRequest(**{"chunk": Chunk.from_dict(in_dict)})
+
+    def from_dict(in_dict: Dict):
+        # in_dict is the full JSON body for the ChunkRequest, e.g.:
+        # {
+        #   "chunk": {"chunk_id": "c1", "src_key": "s", "dest_key": "d", ...},
+        #   "src_region": "r1", ...
+        # }
+        
+        # print(f"DEBUG: ChunkRequest.from_dict received: {in_dict}") # Optional for debugging
+
+        if not isinstance(in_dict, dict):
+            raise TypeError(f"Input to ChunkRequest.from_dict must be a dict, got {type(in_dict)}")
+
+        dict_copy = in_dict.copy() # Work on a copy
+
+        if "chunk" not in dict_copy or not isinstance(dict_copy["chunk"], dict):
+            raise ValueError("Input dictionary for ChunkRequest must contain a 'chunk' key with a dictionary value holding Chunk attributes.")
+
+        # Deserialize the nested Chunk object
+        chunk_attributes_dict = dict_copy.pop("chunk") # Get the chunk data AND remove 'chunk' key from dict_copy
+        
+        # print(f"DEBUG: Attributes for Chunk.from_dict: {chunk_attributes_dict}") # Optional for debugging
+        
+        chunk_object = Chunk.from_dict(chunk_attributes_dict) # Create the Chunk object
+
+        # Now dict_copy contains the remaining top-level fields meant for ChunkRequest
+        # (e.g., src_region, dst_region, src_provider, etc.)
+        return ChunkRequest(chunk=chunk_object, **dict_copy)
+
 
 
 @total_ordering

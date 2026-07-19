@@ -39,18 +39,28 @@ class Planner:
             with open(quota_limits_file, "r") as f:
                 quota_limits = json.load(f)
         else:
-            if os.path.exists(aws_quota_path):
-                with aws_quota_path.open("r") as f:
-                    quota_limits["aws"] = json.load(f)
-            if os.path.exists(azure_standardDv5_quota_path):
-                with azure_standardDv5_quota_path.open("r") as f:
-                    quota_limits["azure"] = json.load(f)
-            if os.path.exists(gcp_quota_path):
-                with gcp_quota_path.open("r") as f:
-                    quota_limits["gcp"] = json.load(f)
-            if os.path.exists(scp_quota_path):
-                with scp_quota_path.open("r") as f:
-                    quota_limits["scp"] = json.load(f)
+            def safe_json_load(path):
+                if os.path.exists(path):
+                    with open(path, "r") as f:
+                        content = f.read()
+                        if content.strip():
+                            try:
+                                return json.loads(content)
+                            except json.JSONDecodeError:
+                                logger.warning(f"Quota file at {path} contains invalid JSON. Ignoring.")
+                                return {} # Treat invalid JSON as no quota
+                        else:
+                            return {} # Treat empty file as no quota
+                return {} # File does not exist
+
+            quota_limits = {}
+            quota_limits["aws"] = safe_json_load(aws_quota_path)
+            quota_limits["azure"] = safe_json_load(azure_standardDv5_quota_path)
+            quota_limits["gcp"] = safe_json_load(gcp_quota_path)
+            
+            # This handles the specific SCP file that was causing the crash
+            quota_limits["scp"] = safe_json_load(scp_quota_path)
+
         self.quota_limits = quota_limits
 
         # Loading the vcpu information - a dictionary of dictionaries

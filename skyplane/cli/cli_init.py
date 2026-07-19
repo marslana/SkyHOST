@@ -27,7 +27,7 @@ def load_aws_config(config: SkyplaneConfig, non_interactive: bool = False) -> Sk
         config.aws_enabled = False
         typer.secho("    AWS support disabled because boto3 is not installed. Run `pip install 'skyplane[aws]'`.", fg="red", err=True)
         return config
-    if non_interactive or typer.confirm("    Do you want to configure AWS support in Skyplane?", default=True):
+    if non_interactive or typer.confirm("    Do you want to configure AWS support in SkyHOST?", default=True):
         session = boto3.Session()
         credentials_session = session.get_credentials()
         if credentials_session is None:
@@ -64,7 +64,7 @@ def load_aws_config(config: SkyplaneConfig, non_interactive: bool = False) -> Sk
 
 
 def load_cloudflare_config(config: SkyplaneConfig, non_interactive: bool = False) -> SkyplaneConfig:
-    if non_interactive or typer.confirm("    Do you want to configure Cloudflare support in Skyplane?", default=True):
+    if non_interactive or typer.confirm("    Do you want to configure Cloudflare support in SkyHOST?", default=True):
         if "R2_ACCESS_KEY_ID" in os.environ and "R2_SECRET_ACCESS_KEY" in os.environ:
             config.cloudflare_access_key_id = os.environ["R2_ACCESS_KEY_ID"]
             config.cloudflare_secret_access_key = os.environ["R2_SECRET_ACCESS_KEY"]
@@ -108,12 +108,12 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
             return False, out, err
         return True, out, err
 
-    if non_interactive or typer.confirm("    Do you want to configure Azure support in Skyplane?", default=True):
+    if non_interactive or typer.confirm("    Do you want to configure Azure support in SkyHOST?", default=True):
         if force_init:
             typer.secho("    Azure credentials will be re-initialized", fg="red", err=True)
             clear_azure_config(config, verbose=False)
         if config.azure_enabled and config.azure_subscription_id and config.azure_principal_id and config.azure_client_id:
-            typer.secho("    Azure credentials already configured! To reconfigure Azure, run `skyplane init --reinit-azure`.", fg="blue")
+            typer.secho("    Azure credentials already configured! To reconfigure Azure, run `skyhost init --reinit-azure`.", fg="blue")
             return config
 
         # check if az cli is installed
@@ -158,14 +158,14 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
             next((n for n, i in subscriptions.items() if i == defaults["subscription_id"]), None) if defaults["subscription_id"] else None
         )
 
-        # select subscription to launch Skyplane VMs in
+        # select subscription to launch SkyHOST VMs in
         if non_interactive:
             config.azure_subscription_id = defaults["subscription_id"]
         else:
             choices = {f"{name} ({id})": id for name, id in subscriptions.items()}
             default_choice = f"{defaults['subscription_name']} ({defaults['subscription_id']})" if defaults["subscription_id"] else None
             selected_choice = questionary.select(
-                "Select Azure subscription to launch Skyplane VMs in:",
+                "Select Azure subscription to launch SkyHOST VMs in:",
                 choices=list(sorted(choices.keys())),
                 default=default_choice,
                 qmark="    ?",
@@ -188,7 +188,7 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
             choices = {f"{name} ({id})": id for name, id in subscriptions.items()}
             default_choice = f"{defaults['subscription_name']} ({defaults['subscription_id']})" if defaults["subscription_id"] else None
             authorize_subscription_strs = questionary.checkbox(
-                "Select which Azure subscriptions that Skyplane should be able to read/write data to",
+                "Select which Azure subscriptions that SkyHOST should be able to read/write data to",
                 choices=list(sorted(choices.keys())),
                 default=default_choice,
                 qmark="    ?",
@@ -196,7 +196,7 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
             ).ask()
             if not authorize_subscription_strs:
                 typer.secho(
-                    "    Note: Skyplane will not be able to read/write data to any Azure subscriptions so you will not be able to use Azure storage.",
+                    "    Note: SkyHOST will not be able to read/write data to any Azure subscriptions so you will not be able to use Azure storage.",
                     fg="red",
                 )
                 authorize_subscriptions_ids = []
@@ -206,7 +206,7 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
         if not config.azure_resource_group:
             config.azure_resource_group = (
                 typer.prompt(
-                    "    Enter the Azure resource group to provision Skyplane VMs in (the default should work in most cases)",
+                    "    Enter the Azure resource group to provision SkyHOST VMs in (the default should work in most cases)",
                     default=defaults["resource_group"],
                 )
                 if not non_interactive
@@ -215,7 +215,7 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
         if not config.azure_umi_name:
             config.azure_umi_name = (
                 typer.prompt(
-                    "    Enter the name for the user managed identity that Skyplane VMs will use to access your Azure Storage Accounts (the default should work in most cases)",
+                    "    Enter the name for the user managed identity that SkyHOST VMs will use to access your Azure Storage Accounts (the default should work in most cases)",
                     default=defaults["umi_name"],
                 )
                 if not non_interactive
@@ -233,7 +233,7 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
         typer.secho(f"        $ {create_umi_cmd}", fg="yellow")
 
         with Progress(
-            TextColumn("    "), SpinnerColumn(), TextColumn("Creating Skyplane managed identity{task.description}"), transient=True
+            TextColumn("    "), SpinnerColumn(), TextColumn("Creating SkyHOST managed identity{task.description}"), transient=True
         ) as progress:
             progress.add_task("", total=None)
             # NOTE: we want to run this command early on because it takes time to register the quota provider
@@ -270,7 +270,7 @@ def load_azure_config(config: SkyplaneConfig, force_init: bool = False, non_inte
 
         if role_cmds:
             typer.secho(
-                f"    I will run the following commands to authorize the newly created Skyplane managed identity to access your storage accounts:",
+                f"    I will run the following commands to authorize the newly created SkyHOST managed identity to access your storage accounts:",
                 fg="blue",
             )
             for role_cmd in role_cmds:
@@ -328,7 +328,7 @@ def load_gcp_config(config: SkyplaneConfig, force_init: bool = False, non_intera
         compute.GCPAuthentication.clear_region_config()
         return config
 
-    if non_interactive or typer.confirm("    Do you want to configure GCP support in Skyplane?", default=True):
+    if non_interactive or typer.confirm("    Do you want to configure GCP support in SkyHOST?", default=True):
         if force_init:
             typer.secho("    GCP credentials will be re-initialized", fg="red", err=True)
             config.gcp_project_id = None
@@ -337,7 +337,7 @@ def load_gcp_config(config: SkyplaneConfig, force_init: bool = False, non_intera
             config.gcp_project_id = None
 
         if config.gcp_project_id is not None:
-            typer.secho("    GCP already configured! To reconfigure GCP, run `skyplane init --reinit-gcp`.", fg="blue")
+            typer.secho("    GCP already configured! To reconfigure GCP, run `skyhost init --reinit-gcp`.", fg="blue")
             config.gcp_enabled = True
             return config
 
@@ -349,7 +349,7 @@ def load_gcp_config(config: SkyplaneConfig, force_init: bool = False, non_intera
             return disable_gcp_support()
         else:
             typer.secho("    GCP credentials found in GCP CLI", fg="blue")
-            if non_interactive or typer.confirm("    Do you want to enable GCP support in Skyplane?", default=True):
+            if non_interactive or typer.confirm("    Do you want to enable GCP support in SkyHOST?", default=True):
                 if not non_interactive:
                     config.gcp_project_id = typer.prompt("    Enter the GCP project ID", default=inferred_project)
 
@@ -428,7 +428,7 @@ def load_ibmcloud_config(config: SkyplaneConfig, force_init: bool = False, non_i
             "    IBM Cloud support disabled because ibm_boto3 is not installed. Run `pip install skyplane[ibmcloud].`", fg="red", err=True
         )
         return config
-    if non_interactive or typer.confirm("    Do you want to configure IBM Cloud support in Skyplane?", default=True):
+    if non_interactive or typer.confirm("    Do you want to configure IBM Cloud support in SkyHOST?", default=True):
         ibm_config = load_config()
         config.ibmcloud_useragent = ibm_config["user_agent"] if "user_agent" in ibm_config else "skyplane-ibm"
 
@@ -480,7 +480,7 @@ def load_scp_config(config: SkyplaneConfig, force_init: bool = False, non_intera
         compute.SCPAuthentication.clear_region_config()
         return config
 
-    if non_interactive or typer.confirm("    Do you want to configure SCP support in Skyplane?", default=True):
+    if non_interactive or typer.confirm("    Do you want to configure SCP support in SkyHOST?", default=True):
         # SCP credentials check
         auth = compute.SCPAuthentication(config=config)
         credentials_path = auth.scp_credential_path

@@ -72,7 +72,7 @@ class SkyplaneCLI:
             ibmcloud_config=self.ibmcloud_config,
             scp_config=self.scp_config,
         )
-        typer.secho(f"Using Skyplane version {skyplane.__version__}", fg="bright_black")
+        typer.secho(f"Using SkyHOST v{skyplane.skyhost_version} (Skyplane core {skyplane.__version__})", fg="bright_black")
 
     def to_api_config(self, config: SkyplaneConfig):
         aws_config = AWSConfig(aws_enabled=config.aws_enabled)
@@ -95,7 +95,7 @@ class SkyplaneCLI:
         )
         if not config.azure_resource_group or not config.azure_umi_name:
             typer.secho(
-                "Azure resource group and UMI name not configured correctly. Please reinit Azure with `skyplane init --reinit-azure`.",
+                "Azure resource group and UMI name not configured correctly. Please reinit Azure with `skyhost init --reinit-azure`.",
                 fg=typer.colors.RED,
                 err=True,
             )
@@ -112,6 +112,10 @@ class SkyplaneCLI:
 
     def make_transfer_config(self, config: SkyplaneConfig) -> TransferConfig:
         intraregion = self.src_region_tag == self.dst_region_tag
+        
+        # ENABLE MULTIPART TRANSFERS WITH PROPER SETTINGS
+        logger.info("DEBUG: Re-enabling multipart transfers with fixed synchronization")
+        
         return TransferConfig(
             autoterminate_minutes=config.get_flag("autoshutdown_minutes"),
             requester_pays=config.get_flag("requester_pays"),
@@ -128,9 +132,10 @@ class SkyplaneCLI:
             ibmcloud_instance_class=config.get_flag("ibmcloud_instance_class"),
             gcp_use_premium_network=config.get_flag("gcp_use_premium_network"),
             scp_instance_class=config.get_flag("scp_instance_class"),
-            multipart_enabled=config.get_flag("multipart_enabled"),
-            multipart_threshold_mb=config.get_flag("multipart_min_threshold_mb"),
-            multipart_chunk_size_mb=config.get_flag("multipart_chunk_size_mb"),
+            # RE-ENABLE MULTIPART WITH CONSERVATIVE SETTINGS
+            multipart_enabled=True,
+            multipart_threshold_mb=32,  # Start multipart for files > 128MB
+            multipart_chunk_size_mb=64,
             multipart_max_chunks=config.get_flag("multipart_max_chunks"),
         )
 
@@ -179,7 +184,7 @@ class SkyplaneCLI:
         small_transfer_cmd = replicate_small_cp_cmd(src, dst, recursive)
         if small_transfer_cmd:
             typer.secho(f"Transfer is small enough to delegate to native tools. Delegating to: {small_transfer_cmd}", fg="yellow")
-            typer.secho(f"You can disable this with `skyplane config set native_cmd_enabled false`", fg="bright_black")
+            typer.secho(f"You can disable this with `skyhost config set native_cmd_enabled false`", fg="bright_black")
             os.system(small_transfer_cmd)
             return True
         else:
@@ -189,7 +194,7 @@ class SkyplaneCLI:
         small_transfer_cmd = replicate_small_sync_cmd(src, dst)
         if small_transfer_cmd:
             typer.secho(f"Transfer is small enough to delegate to native tools. Delegating to: {small_transfer_cmd}", fg="yellow")
-            typer.secho(f"You can disable this with `skyplane config set native_cmd_enabled false`", fg="bright_black")
+            typer.secho(f"You can disable this with `skyhost config set native_cmd_enabled false`", fg="bright_black")
             os.system(small_transfer_cmd)
             return True
         else:
@@ -222,7 +227,7 @@ class SkyplaneCLI:
 
         if src_region_tag.startswith("local") or dest_region_tags[0].startswith("local"):
             # TODO: should still pass cost estimate
-            console.print(f"[yellow]Note: local transfers are not monitored by Skyplane[yellow]")
+            console.print(f"[yellow]Note: local transfers are not monitored by SkyHOST[yellow]")
             return True
 
         topology = pipeline.planner.plan(pipeline.jobs_to_dispatch)
@@ -263,7 +268,7 @@ class SkyplaneCLI:
             if typer.confirm("Continue?", default=True):
                 logger.fs.debug("User confirmed transfer")
                 console.print(
-                    "[green]Transfer starting[/green] (Tip: Enable auto-confirmation with `skyplane config set autoconfirm true`)"
+                    "[green]Transfer starting[/green] (Tip: Enable auto-confirmation with `skyhost config set autoconfirm true`)"
                 )
                 return True
             else:
@@ -351,7 +356,7 @@ def run_transfer(
     cli = SkyplaneCLI(src_region_tag=src_region_tag, dst_region_tag=dst_region_tag, args=args)
     if not cli.check_config():
         typer.secho(
-            f"Skyplane configuration file is not valid. Please reset your config by running `rm {config_path}` and then rerunning `skyplane init` to fix.",
+            f"SkyHOST configuration file is not valid. Please reset your config by running `rm {config_path}` and then rerunning `skyhost init` to fix.",
             fg="red",
         )
         return 1
@@ -396,6 +401,7 @@ def run_transfer(
         try:
             dp.provision(spinner=True)
             dp.run(pipeline.jobs_to_dispatch, hooks=ProgressBarTransferHook(dp.topology.dest_region_tags))
+
         except KeyboardInterrupt:
             logger.fs.warning("Transfer cancelled by user (KeyboardInterrupt).")
             console.print("\n[red]Transfer cancelled by user. Copying gateway logs and exiting.[/red]")
@@ -408,7 +414,7 @@ def run_transfer(
                 console.print(e)
                 UsageClient.log_exception("cli_cp", e, args, cli.src_region_tag, [cli.dst_region_tag])
                 console.print("[bold red]Deprovisioning was interrupted! VMs may still be running which will incur charges.[/bold red]")
-                console.print("[bold red]Please manually deprovision the VMs by running `skyplane deprovision`.[/bold red]")
+                console.print("[bold red]Please manually deprovision the VMs by running `skyhost deprovision`.[/bold red]")
             return 1
         except skyplane.exceptions.SkyplaneException as e:
             console.print(f"[bright_black]{traceback.format_exc()}[/bright_black]")
