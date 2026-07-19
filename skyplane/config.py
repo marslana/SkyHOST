@@ -73,7 +73,9 @@ _DEFAULT_FLAGS = {
     "gcp_default_region": "us-central1-a",
     "ibmcloud_default_region": "us-east",
     "gcp_use_premium_network": True,
-    "usage_stats": True,
+    # SkyHOST: telemetry is opt-in; upstream default posted usage data to the
+    # upstream Skyplane project's collector.
+    "usage_stats": False,
     "gcp_service_account_name": "skyplane-manual",
     "requester_pays": False,
     "native_cmd_enabled": True,
