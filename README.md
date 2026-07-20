@@ -54,10 +54,14 @@ automatically when a transfer is launched. Override it with the
 
 ## Quickstart
 
+All transfer modes are available through the unified `skyhost transfer`
+command, which routes to the right data plane based on the URI schemes
+(`skyhost stream` and `skyhost cp` remain available as explicit aliases).
+
 Kafka-to-Kafka streaming between two regions:
 
 ```bash
-skyhost stream "kafka://SRC_BROKER:9092/src_topic" "kafka://DST_BROKER:9092/dst_topic" \
+skyhost transfer "kafka://SRC_BROKER:9092/src_topic" "kafka://DST_BROKER:9092/dst_topic" \
   --src-region aws:us-east-1 --dst-region aws:eu-central-1 \
   --reader-processes 4 --writer-processes 4 --send-connections 4 \
   --batch-size-mb 32 --preserve-partitions \

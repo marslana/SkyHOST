@@ -57,6 +57,10 @@ def transfer(
     dst_region: Optional[str] = typer.Option(None, "--dst-region", help="Destination region for streaming (e.g., gcp:us-central1)"),
     reader_processes: int = typer.Option(1, "--reader-processes", help="Kafka reader processes (stream only)"),
     writer_processes: int = typer.Option(4, "--writer-processes", help="Kafka writer processes (stream only)"),
+    batch_size_mb: int = typer.Option(32, "--batch-size-mb", help="Target batch size in MB for the Kafka reader (stream only)"),
+    batch_max_time_ms: int = typer.Option(50, "--batch-max-time-ms", help="Max time in ms before sending a partial batch (stream only)"),
+    batch_max_messages: int = typer.Option(10000, "--batch-max-messages", help="Max records per batch from the Kafka reader (stream only)"),
+    preserve_partitions: bool = typer.Option(True, "--preserve-partitions/--no-preserve-partitions", help="Preserve source partition numbers at destination (stream only)"),
     # Destination Kafka tuning and local sink (stream only)
     dst_kafka_acks: Optional[str] = typer.Option(None, "--dst-acks", help="Kafka producer acks at destination: all, 1, or 0 (stream only)"),
     dst_enable_idempotence: Optional[bool] = typer.Option(None, "--dst-idempotence/--no-dst-idempotence", help="Enable idempotent producer at destination (stream only)"),
@@ -87,6 +91,9 @@ def transfer(
         if not src_region or not dst_region:
             typer.secho("--src-region and --dst-region are required for Kafka streaming.", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=2)
+        # Pass every parameter explicitly: calling the typer-decorated stream()
+        # directly would otherwise leave unpassed params as OptionInfo objects.
+        # Unset shared options fall back to the same defaults as `skyhost stream`.
         return stream(
             src=src,
             dst=dst,
@@ -97,9 +104,15 @@ def transfer(
             max_instances=max_instances,
             reader_processes=reader_processes,
             writer_processes=writer_processes,
-            dst_kafka_acks=(dst_kafka_acks or "all"),
-            dst_enable_idempotence=(True if dst_enable_idempotence is None else dst_enable_idempotence),
-            dst_max_in_flight=(1 if dst_max_in_flight is None else dst_max_in_flight),
+            send_connections=send_connections,
+            batch_size_mb=batch_size_mb,
+            batch_max_time_ms=batch_max_time_ms,
+            batch_max_messages=batch_max_messages,
+            preserve_partitions=preserve_partitions,
+            dst_kafka_acks=(dst_kafka_acks or "1"),
+            dst_enable_idempotence=(False if dst_enable_idempotence is None else dst_enable_idempotence),
+            dst_max_in_flight=(5 if dst_max_in_flight is None else dst_max_in_flight),
+            dst_linger_ms=dst_linger_ms,
             dst_local_sink=dst_local_sink,
         )
 
