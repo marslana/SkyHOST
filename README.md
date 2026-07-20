@@ -36,10 +36,12 @@ unchanged and available under the same CLI.
 
 ## Installation
 
+Requires Python 3.8–3.11 (Python 3.12+ is not supported yet).
+
 ```bash
-git clone <this-repo>
-cd skyhost
-python3 -m venv venv && source venv/bin/activate
+git clone https://github.com/marslana/SkyHOST.git
+cd SkyHOST
+python3.11 -m venv venv && source venv/bin/activate
 pip install -e ".[aws]"
 skyhost init   # configure cloud credentials
 ```
